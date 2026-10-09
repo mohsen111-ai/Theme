@@ -864,14 +864,15 @@ function render(pack, name) { const pk = PACKS[pack]; return mk(c => { const r =
 
 /* ---- app icon: crescent moon with a star on a night sky. Adaptive layers are 108dp -> 432px ---- */
 function crescent(c, k, mono) { // k = px per dp
-  c.save(); c.scale(k, k);
-  if (!mono) { glow(c, 52, 54, 46, 'rgba(255,226,170,.45)', 1) }
-  const g = c.createLinearGradient(34, 34, 70, 74); g.addColorStop(0, mono ? '#ffffff' : '#fbf1d6'); g.addColorStop(1, mono ? '#ffffff' : '#e0cd9c');
-  c.fillStyle = g; c.beginPath(); c.arc(50, 56, 21, 0, TAU); c.fill();
-  c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(59, 49, 18.5, 0, TAU); c.fill(); c.globalCompositeOperation = 'source-over';
-  const star = (x, y, R, col) => { c.fillStyle = col; c.beginPath(); for (let i = 0; i < 8; i++) { const a = i / 8 * TAU - Math.PI / 2, rad = i % 2 ? R * .28 : R; c.lineTo(x + Math.cos(a) * rad, y + Math.sin(a) * rad) } c.closePath(); c.fill() };
+  if (!mono) { c.save(); c.scale(k, k); glow(c, 52, 54, 46, 'rgba(255,226,170,.45)', 1); c.restore() }
+  // the crescent is cut on its own canvas so the glow behind it stays one continuous haze
+  const t = document.createElement('canvas'); t.width = t.height = 432; const tc = t.getContext('2d'); tc.save(); tc.scale(k, k);
+  const g = tc.createLinearGradient(34, 34, 70, 74); g.addColorStop(0, mono ? '#ffffff' : '#fbf1d6'); g.addColorStop(1, mono ? '#ffffff' : '#e0cd9c');
+  tc.fillStyle = g; tc.beginPath(); tc.arc(50, 56, 21, 0, TAU); tc.fill();
+  tc.globalCompositeOperation = 'destination-out'; tc.beginPath(); tc.arc(59, 49, 18.5, 0, TAU); tc.fill(); tc.globalCompositeOperation = 'source-over';
+  const star = (x, y, R, col) => { tc.fillStyle = col; tc.beginPath(); for (let i = 0; i < 8; i++) { const a = i / 8 * TAU - Math.PI / 2, rad = i % 2 ? R * .28 : R; tc.lineTo(x + Math.cos(a) * rad, y + Math.sin(a) * rad) } tc.closePath(); tc.fill() };
   star(62, 41, 8, mono ? '#ffffff' : '#ffd98a'); if (!mono) { star(72, 55, 3.4, '#fbf1d6'); star(55, 31, 2.6, '#fbf1d6') }
-  c.restore() }
+  tc.restore(); c.drawImage(t, 0, 0) }
 function appIcon(kind) { const cv = document.createElement('canvas'); cv.width = cv.height = 432; const c = cv.getContext('2d'); const k = 4;
   if (kind === 'bg') { const g = c.createRadialGradient(150, 120, 20, 216, 216, 330); g.addColorStop(0, '#2c3578'); g.addColorStop(.6, '#141a46'); g.addColorStop(1, '#090b22'); c.fillStyle = g; c.fillRect(0, 0, 432, 432); const r = rng(5); for (let i = 0; i < 46; i++) { c.fillStyle = 'rgba(240,244,255,' + (.25 + r() * .6) + ')'; c.beginPath(); c.arc(r() * 432, r() * 432, .8 + r() * 1.8, 0, TAU); c.fill() } }
   else crescent(c, k, kind === 'mono'); return cv }
