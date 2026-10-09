@@ -139,7 +139,7 @@ function mkCanvas(scale) { const cv = document.createElement('canvas'); cv.width
 /* render the static layers of a scene at `scale` (3 for the app assets, ~1.5 for the preview) */
 function geom(sc) { if (sc._g === undefined) sc._g = sc.init ? sc.init(rng(sc.seed + 7)) : null; return sc._g }
 function renderLayers(sc, scale) { const G = geom(sc); const light = sc.theme === 'light', out = { sky: [], bg: null };
-  if (sc.mode === 'long') { sc.skyFrames.forEach((f, i) => { const [cv, c] = mkCanvas(scale); f.draw(c, rng(sc.seed + 100 + i), G); bake(cv, light, true); out.sky.push({ p: f.p, cv }) }); const [cv, c] = mkCanvas(scale); sc.st(c, rng(sc.seed), G); bake(cv, light, false); out.bg = cv }
+  if (sc.mode === 'long') { sc.skyFrames.forEach((f, i) => { const [cv, c] = mkCanvas(scale * .5); f.draw(c, rng(sc.seed + 100 + i), G); bake(cv, light, true); out.sky.push({ p: f.p, cv }) }); const [cv, c] = mkCanvas(scale); sc.st(c, rng(sc.seed), G); bake(cv, light, false); out.bg = cv }
   else { const [cv, c] = mkCanvas(scale); sc.st(c, rng(sc.seed), G); bake(cv, light, true); out.bg = cv }
   return out }
 function sceneFx(sc) { if (!sc._fx) sc._fx = sc.fx ? sc.fx(geom(sc)) : []; return sc._fx }

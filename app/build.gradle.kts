@@ -11,8 +11,8 @@ android {
         applicationId = "com.nyx.themes"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.2.0"
     }
 
     // Personal sideload key, kept in the repo so every build (here or on GitHub) is signed the same way
