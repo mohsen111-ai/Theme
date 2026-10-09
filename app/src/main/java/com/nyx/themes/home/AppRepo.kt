@@ -13,7 +13,15 @@ data class AppEntry(val pkg: String, val component: ComponentName, val label: St
 
 /** Launchable apps installed on the phone. */
 object AppRepo {
+    @Volatile private var cached: List<AppEntry>? = null
+    fun invalidate() { cached = null }
+
     fun load(ctx: Context): List<AppEntry> {
+        cached?.let { return it }
+        return query(ctx).also { cached = it }
+    }
+
+    private fun query(ctx: Context): List<AppEntry> {
         val pm = ctx.packageManager
         val main = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val infos = try { pm.queryIntentActivities(main, 0) } catch (e: Exception) { emptyList() }

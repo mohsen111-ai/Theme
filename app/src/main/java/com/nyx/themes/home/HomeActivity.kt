@@ -53,7 +53,7 @@ class HomeActivity : AppCompatActivity() {
     private val iconPx get() = Ui.dp(this, 56)
 
     private val pkgReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) { reload() }
+        override fun onReceive(context: Context, intent: Intent) { AppRepo.invalidate(); reload(force = true) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,7 +86,7 @@ class HomeActivity : AppCompatActivity() {
         pinnedAdapter = AppAdapter(compact = false)
         val pinned = RecyclerView(this).apply {
             layoutManager = GridLayoutManager(this@HomeActivity, 4)
-            adapter = pinnedAdapter
+            adapter = pinnedAdapter; itemAnimator = null; setHasFixedSize(true)
             overScrollMode = View.OVER_SCROLL_NEVER
             setPadding(Ui.dp(this@HomeActivity, 10), 0, Ui.dp(this@HomeActivity, 10), 0)
             clipToPadding = false
@@ -123,6 +123,7 @@ class HomeActivity : AppCompatActivity() {
         dcol.addView(searchBox, Ui.lp(Ui.MATCH, Ui.WRAP))
         drawerAdapter = AppAdapter(compact = false)
         val dlist = RecyclerView(this).apply {
+            setHasFixedSize(true); itemAnimator = null; setItemViewCacheSize(24)
             layoutManager = GridLayoutManager(this@HomeActivity, 4); adapter = drawerAdapter
             clipToPadding = false; setPadding(0, Ui.dp(this@HomeActivity, 12), 0, Ui.dp(this@HomeActivity, 24))
         }
@@ -172,24 +173,45 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (themer.pack != prefs.iconPack) { themer = IconThemer(this, prefs.iconPack) }
+        if (themer.pack != prefs.iconPack) { themer = IconThemer(this, prefs.iconPack); dirty = true }
         reload()
     }
 
-    override fun onDestroy() { runCatching { unregisterReceiver(pkgReceiver) }; super.onDestroy() }
+    override fun onDestroy() { bg.shutdown(); runCatching { unregisterReceiver(pkgReceiver) }; super.onDestroy() }
 
-    private fun reload() {
-        apps = AppRepo.load(this)
-        dock = AppRepo.defaultDock(this, apps).take(4)
+    private var loading = false
+    private var dirty = true
+    private val bg = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    /** loads the app list off the main thread; the screen keeps showing what it has meanwhile */
+    private fun reload(force: Boolean = false) {
+        if (force) dirty = true
+        if (!dirty && apps.isNotEmpty()) { applyApps(apps); return }
+        if (loading) return
+        loading = true
+        bg.execute {
+            val list = AppRepo.load(this)
+            val d = AppRepo.defaultDock(this, list).take(4)
+            // warm the icon cache so scrolling the drawer never has to build bitmaps
+            val t = themer
+            runOnUiThread {
+                loading = false; dirty = false
+                if (isDestroyed) return@runOnUiThread
+                apps = list; dock = d
+                applyApps(list)
+            }
+            list.forEach { runCatching { t.icon(it, iconPx) } }
+        }
+    }
+
+    private fun applyApps(list: List<AppEntry>) {
+        if (list.isEmpty()) return
         if (!prefs.homePinsInitialised) { prefs.homePins = AppRepo.defaultPins(apps, dock); prefs.homePinsInitialised = true }
         val byKey = apps.associateBy { it.key }
         pinnedAdapter.submit(prefs.homePins.mapNotNull { byKey[it] })
         drawerAdapter.submit(filtered(searchBox.text?.toString().orEmpty()))
         dockRow.removeAllViews()
-        dock.forEach { app ->
-            val cell = appCell(app)
-            dockRow.addView(cell, Ui.lp(0, Ui.WRAP, 1f))
-        }
+        dock.forEach { app -> dockRow.addView(appCell(app), Ui.lp(0, Ui.WRAP, 1f)) }
     }
 
     private fun filtered(q: String): List<AppEntry> = if (q.isBlank()) apps else apps.filter { it.label.contains(q.trim(), ignoreCase = true) }
@@ -199,7 +221,8 @@ class HomeActivity : AppCompatActivity() {
         drawerOpen = true
         drawer.visibility = View.VISIBLE
         drawer.translationY = resources.displayMetrics.heightPixels.toFloat()
-        ObjectAnimator.ofFloat(drawer, View.TRANSLATION_Y, 0f).setDuration(220).start()
+        drawer.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        ObjectAnimator.ofFloat(drawer, View.TRANSLATION_Y, 0f).setDuration(220).apply { addListener(object : android.animation.AnimatorListenerAdapter() { override fun onAnimationEnd(a: android.animation.Animator) { drawer.setLayerType(View.LAYER_TYPE_NONE, null) } }) }.start()
     }
 
     private fun closeDrawer() {
@@ -229,7 +252,7 @@ class HomeActivity : AppCompatActivity() {
             menu.add(0, 3, 2, "Uninstall")
             setOnMenuItemClickListener {
                 when (it.itemId) {
-                    1 -> { prefs.homePins = if (pinned) prefs.homePins - app.key else (prefs.homePins + app.key).distinct(); reload() }
+                    1 -> { prefs.homePins = if (pinned) prefs.homePins - app.key else (prefs.homePins + app.key).distinct(); applyApps(apps) }
                     2 -> runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${app.pkg}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     3 -> runCatching { startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.pkg}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 }
@@ -239,34 +262,58 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    private fun appCell(app: AppEntry): View {
+    private fun newCell(): LinearLayout {
         val cell = Ui.vbox(this).apply {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(Ui.dp(this@HomeActivity, 2), Ui.dp(this@HomeActivity, 8), Ui.dp(this@HomeActivity, 2), Ui.dp(this@HomeActivity, 8))
             isClickable = true; isFocusable = true
-            contentDescription = app.label
         }
-        val iv = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
-        themer.load(app, iconPx, iv)
-        cell.addView(iv, Ui.lp(iconPx, iconPx))
+        cell.addView(ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER }, Ui.lp(iconPx, iconPx))
         cell.addView(TextView(this).apply {
-            text = app.label; setTextColor(Color.WHITE); textSize = 12f; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; gravity = Gravity.CENTER
+            setTextColor(Color.WHITE); textSize = 12f; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; gravity = Gravity.CENTER
             setShadowLayer(5f, 0f, 1f, 0xCC000000.toInt()); setPadding(0, Ui.dp(this@HomeActivity, 4), 0, 0)
         }, Ui.lp(Ui.MATCH, Ui.WRAP))
-        cell.setOnClickListener { launch(app) }
-        cell.setOnLongClickListener { menu(cell, app); true }
         return cell
     }
 
-    private inner class AppAdapter(val compact: Boolean) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+    private fun bindCell(cell: LinearLayout, iv: ImageView, tv: TextView, app: AppEntry) {
+        cell.contentDescription = app.label
+        tv.text = app.label
+        themer.load(app, iconPx, iv)
+        cell.setOnClickListener { launch(app) }
+        cell.setOnLongClickListener { menu(cell, app); true }
+    }
+
+    private fun appCell(app: AppEntry): View {
+        val cell = newCell()
+        bindCell(cell, cell.getChildAt(0) as ImageView, cell.getChildAt(1) as TextView, app)
+        return cell
+    }
+
+    private inner class CellHolder(val cell: LinearLayout, val icon: ImageView, val label: TextView) : RecyclerView.ViewHolder(cell)
+
+    private inner class AppAdapter(val compact: Boolean) : RecyclerView.Adapter<CellHolder>() {
         private var items: List<AppEntry> = emptyList()
-        fun submit(l: List<AppEntry>) { items = l; notifyDataSetChanged() }
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = object : RecyclerView.ViewHolder(FrameLayout(parent.context)) {}
-        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            val frame = holder.itemView as FrameLayout
-            frame.removeAllViews()
-            frame.addView(appCell(items[position]), FrameLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
-            frame.layoutParams = RecyclerView.LayoutParams(Ui.MATCH, Ui.WRAP)
+        fun submit(l: List<AppEntry>) {
+            if (l == items) return
+            val old = items
+            val diff = androidx.recyclerview.widget.DiffUtil.calculateDiff(object : androidx.recyclerview.widget.DiffUtil.Callback() {
+                override fun getOldListSize() = old.size
+                override fun getNewListSize() = l.size
+                override fun areItemsTheSame(a: Int, b: Int) = old[a].key == l[b].key
+                override fun areContentsTheSame(a: Int, b: Int) = old[a] == l[b]
+            })
+            items = l
+            diff.dispatchUpdatesTo(this)
+        }
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CellHolder {
+            val cell = newCell()
+            cell.layoutParams = RecyclerView.LayoutParams(Ui.MATCH, Ui.WRAP)
+            return CellHolder(cell, cell.getChildAt(0) as ImageView, cell.getChildAt(1) as TextView)
+        }
+        override fun onBindViewHolder(h: CellHolder, position: Int) {
+            val app = items[position]
+            bindCell(h.cell, h.icon, h.label, app)
         }
         override fun getItemCount() = items.size
     }

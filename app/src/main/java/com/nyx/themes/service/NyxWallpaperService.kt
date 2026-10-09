@@ -2,6 +2,7 @@ package com.nyx.themes.service
 
 import android.graphics.Canvas
 import android.graphics.Color
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.PowerManager
@@ -41,6 +42,10 @@ class NyxWallpaperService : WallpaperService() {
         @Volatile private var destroyed = false
         private var lastTick = 0L
         private var failures = 0
+        private var capped = false
+        private var hwFailures = 0
+        private var frames = 0
+        private var fpsStart = SystemClock.uptimeMillis()
 
         private val frame = object : Runnable {
             override fun run() {
@@ -74,7 +79,14 @@ class NyxWallpaperService : WallpaperService() {
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, w: Int, h: Int) {
             super.onSurfaceChanged(holder, format, w, h)
             synchronized(lock) { surface = holder }
+            // render at a capped resolution and let the compositor upscale: big phone screens are far too slow to fill in software
+            if (w > MAX_W && !capped) {
+                capped = true
+                val nh = (h.toLong() * MAX_W / w).toInt()
+                try { holder.setFixedSize(MAX_W, nh); return } catch (e: Exception) { Log.w(TAG, "setFixedSize failed", e) }
+            }
             handler.post {
+                Diag.surface = "${w}x$h"
                 if (w != width || h != height) {
                     width = w; height = h
                     releaseRenderers()
@@ -123,6 +135,7 @@ class NyxWallpaperService : WallpaperService() {
         private fun build(scene: SceneMeta): SceneRenderer? = try {
             SceneRenderer(applicationContext, scene, width, height)
         } catch (e: Throwable) {
+            Diag.error = "build ${scene.id}: $e"
             Log.e(TAG, "cannot build ${scene.id}", e)
             null
         }
@@ -153,7 +166,7 @@ class NyxWallpaperService : WallpaperService() {
             previous?.release(); previous = null
         }
 
-        private fun animationsOn(): Boolean = !(controller.prefs.pauseOnBatterySaver && power.isPowerSaveMode)
+        private fun animationsOn(): Boolean { val on = !(controller.prefs.pauseOnBatterySaver && power.isPowerSaveMode); Diag.saver = power.isPowerSaveMode; return on }
 
         private fun fading() = previous != null && SystemClock.uptimeMillis() - fadeStart < FADE_MS
 
@@ -176,14 +189,23 @@ class NyxWallpaperService : WallpaperService() {
             if (previous != null && now - fadeStart >= FADE_MS) { previous?.release(); previous = null }
             synchronized(lock) {
                 val holder = surface ?: return
-                val canvas = try { holder.lockCanvas() } catch (e: Exception) { null } ?: return
+                val useHw = Build.VERSION.SDK_INT >= 26 && hwFailures < 3 && controller.prefs.renderMode == 0
+                val canvas = try {
+                    if (useHw) holder.lockHardwareCanvas() else holder.lockCanvas()
+                } catch (e: Throwable) {
+                    if (useHw) { hwFailures++; Diag.error = "hw canvas: ${e.message}" }
+                    try { holder.lockCanvas() } catch (e2: Throwable) { null }
+                } ?: return
+                Diag.mode = if (canvas.isHardwareAccelerated) "hardware" else "software"
                 try {
                     val r = renderer
-                    if (r == null) { canvas.drawColor(Color.rgb(8, 11, 30)); return }
+                    if (r == null) { canvas.drawColor(Color.rgb(8, 11, 30)); ensureRenderer(); return }
                     val t = if (r.scene.isAnimated && !animationsOn()) r.scene.poster else timeSec()
                     paint(canvas, r, previous, t, now)
                     debugLastSceneId = r.scene.id
                     debugFrames++
+                    if (++frames >= 30) { val n = SystemClock.uptimeMillis(); Diag.fps = frames * 1000f / (n - fpsStart); frames = 0; fpsStart = n }
+                    Diag.scene = r.scene.id
                 } finally {
                     try { holder.unlockCanvasAndPost(canvas) } catch (e: Exception) { Log.w(TAG, "unlock failed", e) }
                 }
@@ -206,8 +228,19 @@ class NyxWallpaperService : WallpaperService() {
     companion object {
         private const val TAG = "NyxWallpaper"
         private const val FADE_MS = 700L
+        private const val MAX_W = 810
         /** last scene an engine drew and how many frames were drawn (read by tests and handy for debugging) */
         @Volatile var debugLastSceneId: String? = null
         @Volatile var debugFrames: Int = 0
     }
+}
+
+/** tiny status board shown in Settings > Diagnostics */
+object Diag {
+    @Volatile var mode = "-"
+    @Volatile var surface = "-"
+    @Volatile var fps = 0f
+    @Volatile var scene = "-"
+    @Volatile var error = ""
+    @Volatile var saver = false
 }

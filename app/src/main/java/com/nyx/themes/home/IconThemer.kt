@@ -21,12 +21,22 @@ class IconThemer(context: Context, val pack: IconPackId) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
     private val assetCache = HashMap<String, Bitmap?>()
-    private val pool = Executors.newFixedThreadPool(2)
+    private val pool = Executors.newFixedThreadPool(3)
     private val main = Handler(Looper.getMainLooper())
 
     @Synchronized
     private fun asset(name: String): Bitmap? = assetCache.getOrPut(name) {
         runCatching { app.assets.open("icons/${pack.dir}/$name.png").use { BitmapFactory.decodeStream(it) } }.getOrNull()
+    }
+
+    private var tileBmp: Bitmap? = null
+    private fun placeholder(size: Int): Bitmap? {
+        val k = "${pack.dir}/tile/$size"
+        cache.get(k)?.let { return it }
+        val t = asset("tile") ?: return null
+        val b = Bitmap.createScaledBitmap(t, size, size, true)
+        cache.put(k, b)
+        return b
     }
 
     fun icon(entry: AppEntry, sizePx: Int): Bitmap {
@@ -42,7 +52,8 @@ class IconThemer(context: Context, val pack: IconPackId) {
         val key = "${pack.dir}/${entry.key}/$sizePx"
         view.tag = key
         cache.get(key)?.let { view.setImageBitmap(it); return }
-        view.setImageDrawable(null)
+        // show the pack's plain tile straight away so a cell is never blank while its icon is built
+        placeholder(sizePx)?.let { view.setImageBitmap(it) } ?: view.setImageDrawable(null)
         pool.execute {
             val b = runCatching { icon(entry, sizePx) }.getOrNull() ?: return@execute
             main.post { if (view.tag == key) view.setImageBitmap(b) }

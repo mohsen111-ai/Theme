@@ -66,6 +66,19 @@ class SettingsTab(ctx: Context) : ScrollView(ctx) {
         body.addView(note("Animation smoothness"))
         body.addView(chips(listOf("24 fps" to 24, "30 fps" to 30, "45 fps" to 45, "60 fps" to 60), { prefs.fps }, { prefs.fps = it }))
 
+        body.addView(heading("Diagnostics"))
+        val diag = Ui.text(c, "", 13f, Ui.MUTE)
+        fun refreshDiag() {
+            val d = com.nyx.themes.service.Diag
+            diag.text = "Scene: ${d.scene}\nCanvas: ${d.mode}\nSurface: ${d.surface}\nFrame rate: ${"%.0f".format(d.fps)} fps\nBattery Saver: ${if (d.saver) "ON" else "off"}" + (if (d.error.isNotEmpty()) "\nLast error: ${d.error}" else "")
+        }
+        refreshDiag()
+        body.addView(diag)
+        body.addView(Controls.switchRow(c, "Compatibility mode", "Turn on if the live wallpaper looks wrong or stutters.", prefs.renderMode == 1) { prefs.renderMode = if (it) 1 else 0; true })
+        body.addView(Ui.button(c, "Refresh") { refreshDiag() }, Ui.lp(Ui.WRAP, Ui.WRAP).apply { topMargin = Ui.dp(c, 8) })
+        if ((c.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isPowerSaveMode)
+            body.addView(note("Battery Saver is on. Android slows background drawing then, so turn it off if the wallpaper looks choppy."))
+
         body.addView(heading("Now"))
         val row = Ui.hbox(c)
         row.addView(Ui.button(c, "Use Nyx as live wallpaper", true) { WallpaperActions.openLivePicker(c) }, Ui.lp(0, Ui.WRAP, 1f).apply { rightMargin = Ui.dp(c, 8) })

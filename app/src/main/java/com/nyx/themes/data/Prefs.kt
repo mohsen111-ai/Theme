@@ -43,8 +43,13 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putBoolean("follow_dark", v).apply()
 
     var pauseOnBatterySaver: Boolean
-        get() = sp.getBoolean("pause_saver", true)
-        set(v) = sp.edit().putBoolean("pause_saver", v).apply()
+        get() = sp.getBoolean("pause_saver_v2", false)
+        set(v) = sp.edit().putBoolean("pause_saver_v2", v).apply()
+
+    /** 0 = auto (hardware canvas, falls back by itself), 1 = compatible (software canvas) */
+    var renderMode: Int
+        get() = sp.getInt("render_mode", 0)
+        set(v) = sp.edit().putInt("render_mode", v).apply()
 
     var fps: Int
         get() = sp.getInt("fps", 30).coerceIn(10, 60)

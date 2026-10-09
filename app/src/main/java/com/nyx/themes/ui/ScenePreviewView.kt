@@ -17,8 +17,6 @@ class ScenePreviewView(context: Context) : View(context) {
         set(value) { field = value; rebuild() }
     var fixedTime: Float? = null
 
-    init { setLayerType(LAYER_TYPE_SOFTWARE, null) }
-
     private fun rebuild() {
         renderer?.release(); renderer = null
         val s = scene ?: return
