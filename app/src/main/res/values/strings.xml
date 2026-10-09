@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Nyx</string>
+    <string name="home_name">Nyx Home</string>
+    <string name="wallpaper_description">Moonlit wallpapers that move and change on their own.</string>
+</resources>

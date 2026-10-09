@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Nyx" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/nyx_bg</item>
+        <item name="colorAccent">@color/nyx_amber</item>
+        <item name="colorPrimary">@color/nyx_bg</item>
+        <item name="android:statusBarColor">@color/nyx_bg</item>
+        <item name="android:navigationBarColor">@color/nyx_bg</item>
+        <item name="android:textColorPrimary">#EBE6F5</item>
+    </style>
+    <style name="Theme.Nyx.Home" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="colorAccent">@color/nyx_amber</item>
+    </style>
+</resources>
