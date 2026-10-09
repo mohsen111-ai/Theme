@@ -12,7 +12,7 @@ const root = path.resolve(__dirname, '..'), outDir = path.join(root, 'app/src/ma
   const ids = await p.evaluate(() => NYX.SCENES.map(s => s.id)); const index = []; let bytes = 0;
   const save = (rel, url) => { const buf = Buffer.from(url.split(',')[1], 'base64'); fs.writeFileSync(path.join(outDir, rel), buf); bytes += buf.length; return buf.length };
   for (const id of ids) {
-    const r = await p.evaluate(({ id }) => { const sc = NYX.SCENES.find(s => s.id === id), L = NYX.renderLayers(sc, 3), q = .8, enc = cv => cv.toDataURL('image/webp', q);
+    const r = await p.evaluate(({ id }) => { const sc = NYX.SCENES.find(s => s.id === id), L = NYX.renderLayers(sc, 2.5), q = .7, enc = cv => cv.toDataURL('image/webp', q);
       const poster = sc.mode === 'long' ? sc.loop * (sc.poster == null ? .4 : sc.poster) : (sc.poster == null ? 2.5 : sc.poster), th = document.createElement('canvas'); th.width = 270; th.height = 585; const c = th.getContext('2d'); c.scale(.75, .75); NYX.drawFrame(c, sc, L, poster);
       return { meta: { id: sc.id, name: sc.name, mode: sc.mode, theme: sc.theme, style: sc.style, loop: sc.loop, poster }, bg: enc(L.bg), sky: L.sky.map(s => ({ p: s.p, url: enc(s.cv) })), thumb: th.toDataURL('image/webp', .75), fx: NYX.sceneFx(sc) } }, { id });
     const m = r.meta, n = save('bg/' + id + '.webp', r.bg); m.bg = 'bg/' + id + '.webp'; m.sky = r.sky.map((s, i) => { save('bg/' + id + '_s' + i + '.webp', s.url); return { p: s.p, img: 'bg/' + id + '_s' + i + '.webp' } }); m.thumb = 'thumb/' + id + '.webp'; save(m.thumb, r.thumb); m.fx = r.fx; index.push(m);

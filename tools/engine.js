@@ -130,7 +130,7 @@ const SCENES = [];
 function defScene(d) { d.loop = d.loop || (d.mode === 'long' ? 45 : 0); SCENES.push(d); return d }
 
 /* bake film grain + vignette into a canvas (CPU pass, deterministic). alpha layers only get grain where they are opaque. */
-function bake(cv, light, vignette) { const c = cv.getContext('2d'), w = cv.width, h = cv.height, id = c.getImageData(0, 0, w, h), d = id.data, r = rng(99), amp = light ? 7 : 8, cx = w / 2, cy = h * .5, r0 = h * .22, r1 = h * .78, vmax = light ? .28 : .45, vc = light ? [40, 20, 60] : [0, 0, 8];
+function bake(cv, light, vignette) { const c = cv.getContext('2d'), w = cv.width, h = cv.height, id = c.getImageData(0, 0, w, h), d = id.data, r = rng(99), amp = light ? 4 : 5, cx = w / 2, cy = h * .5, r0 = h * .22, r1 = h * .78, vmax = light ? .28 : .45, vc = light ? [40, 20, 60] : [0, 0, 8];
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (y * w + x) * 4, a = d[i + 3]; if (a === 0) { r(); continue } const n = (r() - .5) * 2 * amp; let R = d[i] + n, G = d[i + 1] + n, B = d[i + 2] + n;
     if (vignette) { const dd = Math.hypot(x - cx, y - cy), k = clamp((dd - r0) / (r1 - r0)) * vmax; R = R + (vc[0] - R) * k; G = G + (vc[1] - G) * k; B = B + (vc[2] - B) * k }
     d[i] = R < 0 ? 0 : R > 255 ? 255 : R; d[i + 1] = G < 0 ? 0 : G > 255 ? 255 : G; d[i + 2] = B < 0 ? 0 : B > 255 ? 255 : B }
