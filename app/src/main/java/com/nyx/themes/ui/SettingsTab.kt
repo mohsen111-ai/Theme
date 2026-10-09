@@ -66,11 +66,14 @@ class SettingsTab(ctx: Context) : ScrollView(ctx) {
         body.addView(note("Animation smoothness"))
         body.addView(chips(listOf("24 fps" to 24, "30 fps" to 30, "45 fps" to 45, "60 fps" to 60), { prefs.fps }, { prefs.fps = it }))
 
+        body.addView(note("Picture quality (lower is smoother)"))
+        body.addView(chips(listOf("Sharp" to 0, "Balanced" to 1, "Light" to 2, "Lightest" to 3), { prefs.quality }, { prefs.quality = it }))
+
         body.addView(heading("Diagnostics"))
         val diag = Ui.text(c, "", 13f, Ui.MUTE)
         fun refreshDiag() {
             val d = com.nyx.themes.service.Diag
-            diag.text = "Scene: ${d.scene}\nCanvas: ${d.mode}\nSurface: ${d.surface}\nFrame rate: ${"%.0f".format(d.fps)} fps\nBattery Saver: ${if (d.saver) "ON" else "off"}" + (if (d.error.isNotEmpty()) "\nLast error: ${d.error}" else "")
+            diag.text = "Scene: ${d.scene}\nCanvas: ${d.mode}\nSurface: ${d.surface}\nFrame rate: ${"%.0f".format(d.fps)} fps (${d.frameMs} ms per frame)\nBattery Saver: ${if (d.saver) "ON" else "off"}" + (if (d.error.isNotEmpty()) "\nLast error: ${d.error}" else "")
         }
         refreshDiag()
         body.addView(diag)

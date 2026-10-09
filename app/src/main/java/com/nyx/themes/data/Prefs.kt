@@ -51,6 +51,11 @@ class Prefs(context: Context) {
         get() = sp.getInt("render_mode", 0)
         set(v) = sp.edit().putInt("render_mode", v).apply()
 
+    /** 0 = sharp, 1 = balanced, 2 = light (lower drawing resolution = smoother) */
+    var quality: Int
+        get() = sp.getInt("quality", 1)
+        set(v) = sp.edit().putInt("quality", v.coerceIn(0, 3)).apply()
+
     var fps: Int
         get() = sp.getInt("fps", 30).coerceIn(10, 60)
         set(v) = sp.edit().putInt("fps", v.coerceIn(10, 60)).apply()

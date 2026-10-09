@@ -42,7 +42,36 @@ class NyxWallpaperService : WallpaperService() {
         @Volatile private var destroyed = false
         private var lastTick = 0L
         private var failures = 0
-        private var capped = false
+        private var level = 0
+        private var slowFrames = 0
+        private var requested = 0
+        private var frameMs = 0L
+        private val full: Pair<Int, Int> = resources.displayMetrics.let { minOf(it.widthPixels, it.heightPixels) to maxOf(it.widthPixels, it.heightPixels) }
+
+        private fun targetW(): Int = minOf(full.first, WIDTHS[maxOf(controller.prefs.quality, level).coerceIn(0, WIDTHS.size - 1)])
+
+        /** keeps the drawing surface at the quality's size (the compositor scales it up). true = a resize was requested */
+        private fun applySize(holder: SurfaceHolder, w: Int, h: Int): Boolean {
+            val tw = targetW()
+            val th = (full.second.toLong() * tw / full.first).toInt()
+            if ((w == tw && h == th) || requested == tw) return false
+            requested = tw
+            return try { holder.setFixedSize(tw, th); true } catch (e: Exception) { Log.w(TAG, "setFixedSize failed", e); false }
+        }
+
+        /** measured frame cost too high for a smooth wallpaper: step the resolution down */
+        private fun noteFrame(ms: Long) {
+            frameMs = (frameMs * 7 + ms) / 8
+            if (frameMs > SLOW_MS) slowFrames++ else slowFrames = 0
+            Diag.frameMs = frameMs
+            val eff = maxOf(controller.prefs.quality, level)
+            if (slowFrames > 45 && eff < WIDTHS.size - 1) {
+                slowFrames = 0; level = eff + 1; frameMs = 0
+                Diag.error = "slow frames: lowered quality to ${WIDTHS[level]}px"
+                val h = synchronized(lock) { surface }
+                if (h != null) applySize(h, width, height)
+            }
+        }
         private var hwFailures = 0
         private var frames = 0
         private var fpsStart = SystemClock.uptimeMillis()
@@ -54,6 +83,7 @@ class NyxWallpaperService : WallpaperService() {
                 try {
                     draw()
                     failures = 0
+                    noteFrame(SystemClock.uptimeMillis() - t0)
                 } catch (e: Throwable) {
                     // never let a drawing error kill the render thread; give up on this scene after a few tries
                     Log.e(TAG, "draw failed", e)
@@ -79,12 +109,7 @@ class NyxWallpaperService : WallpaperService() {
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, w: Int, h: Int) {
             super.onSurfaceChanged(holder, format, w, h)
             synchronized(lock) { surface = holder }
-            // render at a capped resolution and let the compositor upscale: big phone screens are far too slow to fill in software
-            if (w > MAX_W && !capped) {
-                capped = true
-                val nh = (h.toLong() * MAX_W / w).toInt()
-                try { holder.setFixedSize(MAX_W, nh); return } catch (e: Exception) { Log.w(TAG, "setFixedSize failed", e) }
-            }
+            applySize(holder, w, h)
             handler.post {
                 Diag.surface = "${w}x$h"
                 if (w != width || h != height) {
@@ -106,6 +131,7 @@ class NyxWallpaperService : WallpaperService() {
             this.visible = visible
             if (visible) {
                 controller.onVisible()
+                synchronized(lock) { surface }?.let { if (width > 0) applySize(it, width, height) }
                 handler.post { ensureRenderer(); restartLoop() }
             } else {
                 handler.removeCallbacks(frame)
@@ -228,7 +254,8 @@ class NyxWallpaperService : WallpaperService() {
     companion object {
         private const val TAG = "NyxWallpaper"
         private const val FADE_MS = 700L
-        private const val MAX_W = 810
+        private val WIDTHS = intArrayOf(810, 630, 480, 360)
+        private const val SLOW_MS = 40L
         /** last scene an engine drew and how many frames were drawn (read by tests and handy for debugging) */
         @Volatile var debugLastSceneId: String? = null
         @Volatile var debugFrames: Int = 0
@@ -243,4 +270,5 @@ object Diag {
     @Volatile var scene = "-"
     @Volatile var error = ""
     @Volatile var saver = false
+    @Volatile var frameMs = 0L
 }
